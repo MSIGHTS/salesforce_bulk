@@ -24,7 +24,6 @@ module SalesforceBulk
     #private
 
     def login()
-
       xml = '<?xml version="1.0" encoding="utf-8" ?>'
       xml += "<env:Envelope xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\""
       xml += "    xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\""
@@ -55,11 +54,14 @@ module SalesforceBulk
       host = host || @@INSTANCE_HOST
 
       if host != @@LOGIN_HOST # Not login, need to add session id to header
-        headers['X-SFDC-Session'] = @session_id;
+        headers['X-SFDC-Session'] = @session_id
         path = "#{@@PATH_PREFIX}#{path}"
       end
-
-      https(host).post(path, xml, headers).body
+      
+      session_valid? do |reset_session|
+        headers['X-SFDC-Session'] = @session_id if reset_session
+        https(host).post(path, xml, headers).body
+      end
     end
 
     def get_request(host, path, headers)
@@ -70,7 +72,19 @@ module SalesforceBulk
         headers['X-SFDC-Session'] = @session_id;
       end
 
-      https(host).get(path, headers).body
+      session_valid? do |reset_session|
+        headers['X-SFDC-Session'] = @session_id if reset_session
+        https(host).get(path, headers).body
+      end
+    end
+    
+    def session_valid?
+      response = yield(false)
+      if response.downcase.include?("exceptionmessage") && response.downcase.include?("invalidsessionid")
+        login()
+        response = yield(true)
+      end
+      response
     end
 
     def https(host)
